@@ -31,13 +31,21 @@ Run:
 dotnet run
 ```
 
-## Publish (standalone .exe)
+## Publish
+
+Small exe, requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) on the target machine (~164KB):
+
+```bash
+dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
+```
+
+Standalone exe, no runtime needed on the target machine (~146MB, bundles the whole .NET runtime):
 
 ```bash
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
-Output: `bin/Release/net8.0-windows/win-x64/publish/VDScrollSwitch.exe`
+Output either way: `bin/Release/net8.0-windows/win-x64/publish/VDScrollSwitch.exe`
 
 ## Known limitations
 

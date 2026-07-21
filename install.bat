@@ -28,6 +28,16 @@ if /i "%AUTOSTART%"=="Y" (
     echo Autostart enabled.
 )
 
+set "STARTMENU_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
+powershell -NoProfile -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('%STARTMENU_DIR%\VDScrollSwitch.lnk'); $s.TargetPath = '%INSTALL_DIR%\%EXE_NAME%'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.IconLocation = '%INSTALL_DIR%\%EXE_NAME%'; $s.Save()" >nul
+echo Start Menu shortcut created.
+
+set /p DESKTOP_SHORTCUT="Add Desktop shortcut too? (Y/N): "
+if /i "%DESKTOP_SHORTCUT%"=="Y" (
+    powershell -NoProfile -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('%USERPROFILE%\Desktop\VDScrollSwitch.lnk'); $s.TargetPath = '%INSTALL_DIR%\%EXE_NAME%'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.IconLocation = '%INSTALL_DIR%\%EXE_NAME%'; $s.Save()" >nul
+    echo Desktop shortcut created.
+)
+
 start "" "%INSTALL_DIR%\%EXE_NAME%"
 
 echo.

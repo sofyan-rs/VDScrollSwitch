@@ -36,11 +36,17 @@ internal sealed class TrayAppContext : ApplicationContext
 
         _trayIcon = new NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = LoadAppIcon(),
             Text = "VDScrollSwitch",
             Visible = true,
             ContextMenuStrip = menu,
         };
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        using var stream = typeof(TrayAppContext).Assembly.GetManifestResourceStream("VDScrollSwitch.app.ico");
+        return stream is not null ? new Icon(stream) : SystemIcons.Application;
     }
 
     private void OnAltWheel(int delta)

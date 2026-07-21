@@ -2,7 +2,7 @@
 
 **Ctrl+Scroll virtual desktop switcher for Windows**
 
-Author: Hendriansyah Wijaya
+Author: Sofyan R.
 Status: Draft v1
 Target: Windows 10/11, .NET 8
 

@@ -13,6 +13,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly VirtualDesktopSwitcher _switcher;
     private readonly ToolStripMenuItem _enabledItem;
     private readonly ToolStripMenuItem _autoManageItem;
+    private readonly ToolStripMenuItem _autoDetectItem;
     private readonly ToolStripMenuItem _autostartItem;
 
     private DateTime _lastSwitch = DateTime.MinValue;
@@ -30,6 +31,12 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             Checked = true,
         };
+        _autoDetectItem = new ToolStripMenuItem("    Auto-detect desktop", null, OnToggleAutoDetect)
+        {
+            Checked = false,
+            ToolTipText = "Only add a desktop to the right once the last one is in use, "
+                        + "instead of always keeping a spare.",
+        };
         _autostartItem = new ToolStripMenuItem("Start with Windows", null, OnToggleAutostart)
         {
             Checked = IsAutostartEnabled(),
@@ -39,6 +46,7 @@ internal sealed class TrayAppContext : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add(_enabledItem);
         menu.Items.Add(_autoManageItem);
+        menu.Items.Add(_autoDetectItem);
         menu.Items.Add(_autostartItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
@@ -87,6 +95,13 @@ internal sealed class TrayAppContext : ApplicationContext
     {
         _autoManageItem.Checked = !_autoManageItem.Checked;
         _switcher.AutoManageEnabled = _autoManageItem.Checked;
+        _autoDetectItem.Enabled = _autoManageItem.Checked;
+    }
+
+    private void OnToggleAutoDetect(object? sender, EventArgs e)
+    {
+        _autoDetectItem.Checked = !_autoDetectItem.Checked;
+        _switcher.AutoDetectEnabled = _autoDetectItem.Checked;
     }
 
     private void OnToggleAutostart(object? sender, EventArgs e)
@@ -117,6 +132,7 @@ internal sealed class TrayAppContext : ApplicationContext
     {
         _trayIcon.Visible = false;
         _hook.Dispose();
+        _switcher.Dispose();
         Application.Exit();
     }
 }

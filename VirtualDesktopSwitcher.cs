@@ -10,19 +10,45 @@ namespace VDScrollSwitch;
 /// current desktop: auto-creates one when the user reaches the rightmost
 /// desktop, and trims empty auto-created desktops from the right edge
 /// when the user moves left.
+/// When AutoDetectEnabled, the buffer is not created eagerly — the rightmost
+/// desktop is left empty until the user actually puts a window on it, at which
+/// point a fresh desktop appears to its right.
 /// Falls back to SendInput (Ctrl+Win+Arrow) if the COM API is unavailable.
 /// </summary>
-internal sealed class VirtualDesktopSwitcher
+internal sealed class VirtualDesktopSwitcher : IDisposable
 {
+    private const int DetectPollMs = 1000;
+
     private readonly HashSet<Guid> _autoCreatedDesktops = new();
+    private readonly object _sync = new();
+    private readonly System.Threading.Timer _detectTimer;
     private bool _comAvailable = true;
+    private bool _autoManageEnabled = true;
+    private bool _autoDetectEnabled;
     private static readonly string _logPath = Path.Combine(
         Path.GetDirectoryName(Environment.ProcessPath) ?? ".", "vdswitch.log");
 
-    public bool AutoManageEnabled { get; set; } = true;
+    public bool AutoManageEnabled
+    {
+        get => _autoManageEnabled;
+        set { _autoManageEnabled = value; UpdateDetectTimer(); }
+    }
+
+    /// <summary>
+    /// When true, the rightmost desktop is only extended once it stops being
+    /// empty, instead of always keeping a spare desktop to the right.
+    /// </summary>
+    public bool AutoDetectEnabled
+    {
+        get => _autoDetectEnabled;
+        set { _autoDetectEnabled = value; UpdateDetectTimer(); }
+    }
 
     public VirtualDesktopSwitcher()
     {
+        _detectTimer = new System.Threading.Timer(_ => PollDetect(), null,
+            Timeout.Infinite, Timeout.Infinite);
+
         try
         {
             _ = VirtualDesktop.GetDesktops();
@@ -32,6 +58,40 @@ internal sealed class VirtualDesktopSwitcher
         {
             _comAvailable = false;
             Log($"COM API unavailable: {ex.Message}");
+        }
+    }
+
+    public void Dispose() => _detectTimer.Dispose();
+
+    private void UpdateDetectTimer()
+    {
+        bool active = _comAvailable && _autoManageEnabled && _autoDetectEnabled;
+        _detectTimer.Change(active ? DetectPollMs : Timeout.Infinite,
+                            active ? DetectPollMs : Timeout.Infinite);
+    }
+
+    /// <summary>
+    /// Auto-detect watchdog: if the user is sitting on the rightmost desktop and
+    /// it now holds a window, extend with a fresh desktop to the right.
+    /// </summary>
+    private void PollDetect()
+    {
+        if (!_comAvailable || !_autoManageEnabled || !_autoDetectEnabled)
+            return;
+
+        if (!Monitor.TryEnter(_sync))
+            return;
+        try
+        {
+            EnsureBufferDesktop();
+        }
+        catch (Exception ex)
+        {
+            Log($"PollDetect error: {ex.Message}");
+        }
+        finally
+        {
+            Monitor.Exit(_sync);
         }
     }
 
@@ -48,7 +108,8 @@ internal sealed class VirtualDesktopSwitcher
         Thread.Sleep(200);
         try
         {
-            EnsureBufferDesktop();
+            lock (_sync)
+                EnsureBufferDesktop();
         }
         catch (Exception ex)
         {
@@ -68,7 +129,8 @@ internal sealed class VirtualDesktopSwitcher
         Thread.Sleep(200);
         try
         {
-            TrimRightEdge();
+            lock (_sync)
+                TrimRightEdge();
         }
         catch (Exception ex)
         {
@@ -79,18 +141,23 @@ internal sealed class VirtualDesktopSwitcher
     /// <summary>
     /// If the current desktop is the rightmost, create a new empty desktop
     /// to the right so the user always has room to scroll right.
+    /// In auto-detect mode the rightmost desktop is only extended once it
+    /// actually holds a window, so an empty edge desktop stays the edge.
     /// </summary>
     private void EnsureBufferDesktop()
     {
         try
         {
             var current = VirtualDesktop.Current;
-            if (current.GetRight() is null)
-            {
-                var buf = VirtualDesktop.Create();
-                _autoCreatedDesktops.Add(buf.Id);
-                Log($"Buffer created: {buf.Id}");
-            }
+            if (current.GetRight() is not null)
+                return;
+
+            if (_autoDetectEnabled && !DesktopHasWindows(current.Id))
+                return;
+
+            var buf = VirtualDesktop.Create();
+            _autoCreatedDesktops.Add(buf.Id);
+            Log($"Buffer created: {buf.Id}");
         }
         catch (Exception ex)
         {
@@ -118,7 +185,16 @@ internal sealed class VirtualDesktopSwitcher
                     break;
 
                 // Don't delete the desktop the user is currently on.
-                if (last.Id == VirtualDesktop.Current.Id)
+                var current = VirtualDesktop.Current;
+                if (last.Id == current.Id)
+                    break;
+
+                // In auto-detect mode, keep the spare that sits directly right of
+                // a non-empty current desktop — otherwise the poll would just
+                // recreate it and the pair would oscillate.
+                if (_autoDetectEnabled
+                    && desktops[i - 1].Id == current.Id
+                    && DesktopHasWindows(current.Id))
                     break;
 
                 last.Remove(desktops[i - 1]);
